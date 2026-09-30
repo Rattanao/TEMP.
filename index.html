@@ -83,6 +83,7 @@ td.mono { font-family: var(--font-mono); }
 .skip { color: var(--warn); }
 button.save { border: 1px solid var(--navy); background: transparent; color: var(--fg); border-radius: 6px; padding: 8px 16px; font: 600 14px var(--font-body); cursor: pointer; }
 button.save:hover { background: var(--soft); }
+.btns { display: flex; gap: 8px; flex-wrap: wrap; }
 details summary { cursor: pointer; font-size: 14px; color: var(--muted); }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
 </style>
@@ -111,7 +112,7 @@ details summary { cursor: pointer; font-size: 14px; color: var(--muted); }
     <div class="panel-head">
       <h2 id="rtitle">ผลการแก้ไข</h2>
       <span class="tag" id="sampleTag">ตัวอย่าง</span>
-      <button class="save" id="save" hidden>บันทึก Revised temp.txt</button>
+      <div class="btns"><button class="save" id="save" hidden>บันทึก Revised temp.txt</button><button class="save" id="saveXlsx" hidden>ดาวน์โหลด Excel</button></div>
     </div>
     <div class="chips" id="chips"></div>
     <div class="scroll">
@@ -132,11 +133,13 @@ details summary { cursor: pointer; font-size: 14px; color: var(--muted); }
   </section>
 </main>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 const COL = 144; // 0-based start of temperature field (column 145)
 const $ = id => document.getElementById(id);
 let current = null; // {name, bytesIn}
 let output = null;  // Uint8Array
+let lastRes = null; // result shown in the table
 
 function toBin(u8) { let s = ""; for (let i = 0; i < u8.length; i += 8192) s += String.fromCharCode.apply(null, u8.subarray(i, i + 8192)); return s; }
 function fromBin(s) { const u = new Uint8Array(s.length); for (let i = 0; i < s.length; i++) u[i] = s.charCodeAt(i) & 255; return u; }
@@ -165,6 +168,7 @@ function esc(s) { return String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<":
 function render(res, isSample) {
   $("sampleTag").hidden = !isSample;
   $("save").hidden = isSample || !res.changed.length;
+  $("saveXlsx").hidden = isSample || !(res.changed.length || res.skipped.length);
   $("rtitle").textContent = isSample ? "ผลการแก้ไข (ข้อมูลตัวอย่าง)" : "ผลการแก้ไข";
   const counts = {};
   res.changed.forEach(r => { const k = r.old + " → " + r.nu; counts[k] = (counts[k] || 0) + 1; });
@@ -206,6 +210,7 @@ $("go").addEventListener("click", () => {
   if (!current) return;
   const res = revise(current.bin);
   output = fromBin(res.text);
+  lastRes = res;
   render(res, false);
   if (res.changed.length) showMsg("ok", `แก้ไข ${res.changed.length} บรรทัดจาก ${current.name} แล้ว กด "บันทึก Revised temp.txt" เพื่อเก็บไฟล์`);
   else showMsg("warn", "ไม่พบค่าอุณหภูมิที่ต้องแก้ไขที่ตำแหน่ง 145 ตรวจสอบว่าเป็นไฟล์ CLIST ที่ถูกต้อง");
@@ -219,6 +224,31 @@ $("save").addEventListener("click", () => {
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   showMsg("ok", "บันทึก Revised temp.txt แล้ว (ดูในโฟลเดอร์ Downloads)");
+});
+
+function download(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+$("saveXlsx").addEventListener("click", () => {
+  if (!lastRes) return;
+  if (!window.XLSX) { showMsg("warn", "โหลดตัวสร้างไฟล์ Excel ไม่สำเร็จ ตรวจสอบอินเทอร์เน็ตแล้วรีเฟรชหน้า"); return; }
+  const wb = XLSX.utils.book_new();
+  const s1 = XLSX.utils.aoa_to_sheet([["บรรทัด", "เบอร์ตู้", "Size/Type", "เดิม", "ใหม่"],
+    ...lastRes.changed.map(r => [r.line, r.cntr, r.type, r.old, r.nu])]);
+  s1["!cols"] = [{ wch: 8 }, { wch: 15 }, { wch: 10 }, { wch: 10 }, { wch: 10 }];
+  XLSX.utils.book_append_sheet(wb, s1, "ผลการแก้ไข");
+  const s2 = XLSX.utils.aoa_to_sheet([["บรรทัด", "เบอร์ตู้", "Size/Type", "อุณหภูมิ", "เหตุผล"],
+    ...lastRes.skipped.map(r => [r.line, r.cntr, r.type, r.temp, r.why])]);
+  s2["!cols"] = [{ wch: 8 }, { wch: 15 }, { wch: 10 }, { wch: 10 }, { wch: 16 }];
+  XLSX.utils.book_append_sheet(wb, s2, "ไม่แก้ไข");
+  const buf = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  download(new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }), "Revised temp.xlsx");
+  showMsg("ok", "บันทึก Revised temp.xlsx แล้ว (ดูในโฟลเดอร์ Downloads)");
 });
 
 // Example rows (made-up container numbers) so the page shows what it does before a file is chosen
