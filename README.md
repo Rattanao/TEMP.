@@ -43,4 +43,4 @@ python revised_temp.py "CLISTHLCH_xxxx.txt" "ผลลัพธ์.txt"
 ## เปิดหน้าเว็บบน GitHub Pages
 
 ไปที่ Settings > Pages ของ repo แล้วเลือก Branch `main` โฟลเดอร์ `/ (root)` แล้วกด Save
-หน้าเว็บจะอยู่ที่ `https://rattanao.github.io/TEMP/`
+หน้าเว็บจะอยู่ที่ `https://rattanao.github.io/TEMP./`
